@@ -353,6 +353,8 @@ public class MainActivity extends AppCompatActivity implements AIListener {
 
                         }
                     });
+                } else {
+                    Log.d("TAG", "ERRORRORO");
                 }
             }
         });
@@ -410,6 +412,13 @@ public class MainActivity extends AppCompatActivity implements AIListener {
     @Override
     protected void onResume() {
         super.onResume();
+        initTTS();
+        final AIConfiguration config = new AIConfiguration("f0105f860a904ef9b48c4c9a2ce38bc2",
+                AIConfiguration.SupportedLanguages.English,
+                AIConfiguration.RecognitionEngine.System);
+        ping(config, "Srihari");
+        running = false;
+        listening = false;
     }
     @Override
     protected void onStop() {
