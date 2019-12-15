@@ -1,0 +1,2 @@
+include ':mobile', ':wear', ':spotify-auth-release-1.1.0', ':spotify-app-remote-release-0.6.3', ':spotify-app-remote-release-0.4.0'
+rootProject.name='RoadsidePal'
