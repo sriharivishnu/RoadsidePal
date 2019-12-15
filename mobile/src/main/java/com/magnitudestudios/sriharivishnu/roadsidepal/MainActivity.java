@@ -13,6 +13,7 @@ import android.location.LocationManager;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
 import android.provider.AlarmClock;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
@@ -60,7 +61,7 @@ public class MainActivity extends AppCompatActivity implements AIListener {
     private static final String REDIRECT_URI = "com.srihari.spotify.appremote://callback";
 
     private TextView mTextView;
-    private SeekBar mSeekBar, soundLevel;
+    private SeekBar mSeekBar;
     private Button button;
     private static int HEART_RATE_SLEEPY = 65;
     private AIService aiService;
@@ -80,7 +81,6 @@ public class MainActivity extends AppCompatActivity implements AIListener {
         mTextView = (TextView) findViewById(R.id.number);
         mSeekBar = (SeekBar) findViewById(R.id.seekbar);
         button = (Button) findViewById(R.id.button);
-        soundLevel = (SeekBar) findViewById(R.id.soundlevel);
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
 
             ActivityCompat.requestPermissions(this,
@@ -94,43 +94,7 @@ public class MainActivity extends AppCompatActivity implements AIListener {
 
         }
 
-
-        textToSpeech = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
-            @Override
-            public void onInit(int status) {
-                if (status != TextToSpeech.ERROR) {
-                    textToSpeech.setLanguage(Locale.ENGLISH);
-                    textToSpeech.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                        @Override
-                        public void onStart(String utteranceId) {
-
-                        }
-
-                        @Override
-                        public void onDone(String utteranceId) {
-                            Log.d("SRIHARI", "SFSDF");
-                            if (!running) {
-                                runOnUiThread(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        if (!listening) {
-                                            counter = 0;
-                                            aiService.startListening();
-                                            listening = true;
-                                        }
-                                    }
-                                });
-                            }
-                        }
-
-                        @Override
-                        public void onError(String utteranceId) {
-
-                        }
-                    });
-                }
-            }
-        });
+        initTTS();
 
         final LinearLayout linearLayout = (LinearLayout) findViewById(R.id.background);
 
@@ -156,7 +120,7 @@ public class MainActivity extends AppCompatActivity implements AIListener {
                     //Sleepy
                     linearLayout.setBackgroundColor(getColor(R.color.colorAccent));
                     if (!isFirst && !running) {
-                        ping(config);
+                        ping(config, "Srihari");
                         isFirst = true;
                     }
                 }
@@ -180,8 +144,8 @@ public class MainActivity extends AppCompatActivity implements AIListener {
             @Override
             public void onClick(View v) {
                 if (!listening) {
-                    aiService.startListening();
                     listening = true;
+                    ping(config, "Hello");
                 }
                 else {
                     aiService.stopListening();
@@ -208,7 +172,7 @@ public class MainActivity extends AppCompatActivity implements AIListener {
                     });
                 } else if (!running && !listening && counter > 60){
                     counter = 0;
-                    ping(config);
+                    ping(config, "Srihari");
                 }
                 else if (counter > 600) {
                     counter = 0;
@@ -233,8 +197,9 @@ public class MainActivity extends AppCompatActivity implements AIListener {
                         parameterString += "(" + entry.getKey() + ", " + entry.getValue() + ") ";
                     }
                 }
-
-                command(response.getFulfillment().getSpeech(), response);
+                if (!listening) {
+                    command(response.getFulfillment().getSpeech(), response);
+                }
                 Log.d("GOSRIGO", response.getFulfillment().getSpeech());
                 // Show results in TextView.
                 Log.d("SRIHARI","Query:" + response.getResolvedQuery() + "\nAction: " + response.getAction() + "\nParameters: " + parameterString);
@@ -242,6 +207,9 @@ public class MainActivity extends AppCompatActivity implements AIListener {
         });
     }
     public void command(String command, Result result) {
+        if (result.getResolvedQuery().toLowerCase().contains("thank you") || result.getResolvedQuery().toLowerCase().contains("thanks") || result.getResolvedQuery().toLowerCase().contains("cancel")) {
+            running = true;
+        }
         if (command.equals("play_music")) {
             Log.d("SEHER", result.getStringParameter("music"));
             speak("Playing "+ result.getStringParameter("music"));
@@ -269,19 +237,25 @@ public class MainActivity extends AppCompatActivity implements AIListener {
             Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
             mapIntent.setPackage("com.google.android.apps.maps");
             startActivity(mapIntent);
+            running = true;
         }
         else if (command.equals("alarm_set")) {
+            speak("Ok I will set the alarm. Please pull over.");
             Intent intent = new Intent(AlarmClock.ACTION_SET_ALARM);
-            intent.putExtra(AlarmClock.EXTRA_HOUR, Calendar.getInstance().get(Calendar.HOUR_OF_DAY));
-            intent.putExtra(AlarmClock.EXTRA_MINUTES, Calendar.getInstance().get(Calendar.MINUTE));
+            intent.putExtra(AlarmClock.EXTRA_HOUR, Calendar.getInstance().get(Calendar.HOUR));
+            intent.putExtra(AlarmClock.EXTRA_MINUTES, Calendar.getInstance().get(Calendar.MINUTE)+ (Integer) result.getIntParameter("number"));
             startActivity(intent);
+            running = true;
+        }
+        else if (command.equals("rant_go")) {
+            speak("You are so right, I feel so bad for you.");
         }
         else if (command.equals("end_conversation_ok")) {
             speak("okay");
             running = true;
         }
         else if (command.equals("end_conversation_gj")) {
-            speak("good job");
+            speak("good job, I'll check back in 10 minutes");
             running = true;
         }
 //        else if (command.equals("riddle_answer")) {
@@ -295,19 +269,22 @@ public class MainActivity extends AppCompatActivity implements AIListener {
         }
     }
     public void speak(String thing) {
-        Bundle params = new Bundle();
-        params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "stringId");
-        textToSpeech.speak(thing, TextToSpeech.QUEUE_FLUSH, params, "GOSRIGO");
+        if (textToSpeech.getDefaultEngine() == null) initTTS();
+        if (!listening) {
+            Bundle params = new Bundle();
+            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "stringId");
+            textToSpeech.speak(thing, TextToSpeech.QUEUE_FLUSH, params, "GOSRIGO");
+        }
     }
 
     public void playMusic() {
         spotifyAppRemote.getPlayerApi().play("spotify:user:11158272501:playlist:4Rj0zQ0Ux47upeqVSIuBx9");
     }
 
-    public void ping(AIConfiguration config) {
+    public void ping(AIConfiguration config, String message) {
         final AIDataService aiDataService = new AIDataService(this, config);
 
-        final AIRequest aiRequest = new AIRequest("Srihari");
+        final AIRequest aiRequest = new AIRequest(message);
 
         new AsyncTask<AIRequest,Void,AIResponse>(){
 
@@ -337,6 +314,50 @@ public class MainActivity extends AppCompatActivity implements AIListener {
         }.execute(aiRequest);
     }
 
+    public void initTTS() {
+        textToSpeech = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if (status != TextToSpeech.ERROR) {
+                    textToSpeech.setLanguage(Locale.ENGLISH);
+                    textToSpeech.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                        @Override
+                        public void onStart(String utteranceId) {
+
+                        }
+
+                        @Override
+                        public void onDone(String utteranceId) {
+                            Log.d("SRIHARI", "SFSDF");
+                            if (!running) {
+                                runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        if (!listening) {
+                                            counter = 0;
+                                            try {
+                                                aiService.startListening();
+                                            }
+                                            catch (Error e) {
+                                                Log.e("TAG", e.getMessage());
+                                            }
+                                            listening = true;
+                                        }
+                                    }
+                                });
+                            }
+                        }
+
+                        @Override
+                        public void onError(String utteranceId) {
+
+                        }
+                    });
+                }
+            }
+        });
+    }
+
     @Override
     public void onError(AIError error) {
         Log.e("Error", error.toString());
@@ -344,17 +365,16 @@ public class MainActivity extends AppCompatActivity implements AIListener {
 
     @Override
     public void onAudioLevel(float level) {
-        soundLevel.setProgress(Math.round(level));
     }
 
     @Override
     public void onListeningStarted() {
-
+        listening = true;
     }
 
     @Override
     public void onListeningCanceled() {
-
+        listening = false;
     }
 
     @Override
